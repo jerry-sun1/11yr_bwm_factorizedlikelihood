@@ -15,6 +15,8 @@ from enterprise.signals import signal_base
 from enterprise.signals import deterministic_signals
 from enterprise.signals import utils
 from enterprise import constants as const
+from enterprise.signals.signal_base import LogLikelihood
+from enterprise.signals.signal_base import LookupLikelihood
 
 from enterprise_extensions import models as ee_models
 from enterprise_extensions import model_utils as ee_model_utils
@@ -165,18 +167,22 @@ for loc in range(npix): #The sky-location of the burst
                     #for now let's just print it for testing
                     print(psr.name + " would see an amplitude of: " + str(burst_amplitude[0][0]))
 '''
-def make_lookup_table(psr):
-    log10_burst_amplitudes = np.linspace(-20, -12, 80, endpoint=True) #grid points for the burst strain
 
-    log10_rn_amps = np.linspace(-20, -12, 80, endpoint=True) #grid points for the pulsar red noise
+def make_lookup_table(psr, noisefile, outdir):
+    log10_burst_amplitudes = np.linspace(-17, -12, 50, endpoint=True) #grid points for the burst strain
+    burst_amp_spacing = '-17,-12,50'
+
+    log10_rn_amps = np.linspace(-17, -12, 50, endpoint=True) #grid points for the pulsar red noise
+    rn_amp_spacing = '-17,-12,50'
 
     Ngammas = 70
     gmin = 0
     gmax = 7
-    gammas = np.linspace(gmin, gmax, Ngammas, endpoint=True) #grid points for gamma
+    gammas = np.linspace(gmin, gmax, Ngammas, endpoint=True) #grid points for gamma'
+    gamma_spacing ='0,7,70'
 
 
-    outdir = '/home/nima/nanograv/11yr/single_psr_lookup/'
+
 
     if not os.path.exists(outdir + psr.name):
         os.mkdir(outdir + psr.name)
@@ -195,47 +201,54 @@ def make_lookup_table(psr):
     t0max = np.ceil(max(U[:,-eps] * psr.toas/const.day))
 
     Ts = np.linspace(t0min, t0max, num=100, endpoint=True)
+    time_spacing = '{},{},100'.format(t0min, t0max)
 
-    pta = ee_models.model_ramp([psr],
-                           upper_limit=False, bayesephem=False,
-                           Tmin_bwm=t0min, Tmax_bwm=t0max)
+    sign_spacing = '-1,1,2'
+
+    pta = ee_models.model_ramp([psr], LogLikelihood,
+                          upper_limit=False, bayesephem=False,
+                          Tmin_bwm=t0min, Tmax_bwm=t0max)
 
 
 
-    noisefile = '/home/nima/nanograv/11yr/noisefiles/noisedict.json'
+
     with open(noisefile, 'rb') as nfile:
-        setpars = json.load(nfile)
+       setpars = json.load(nfile)
 
     pta.set_default_params(setpars)
 
     with open(outdir+'{}/pars.txt'.format(psr.name), 'w+') as f:
-        f.write('{}_red_noise_gamma\n{}_red_noise_log10_A\n{}\n{}\n{}'.format(psr.name, psr.name, 'ramp_log10_A', 'ramp_t0','lnlike'))
+        f.write('{}_red_noise_gamma;{}\n{}_red_noise_log10_A;{}\n{};{}\n{};{}\n{};{}'.format(psr.name,gamma_spacing,psr.name,rn_amp_spacing, 'ramp_log10_A',burst_amp_spacing, 'ramp_t0',time_spacing,'sign', sign_spacing))
 
     with open(outdir + "{}/{}_lookup.txt".format(psr.name, psr.name),'a+') as f:
-        for t0 in Ts:
-            for log10_strain in log10_burst_amplitudes:
-                #set up the sky location of the pulsar
-                #print(psr.name + "would see an amplitude of: " + str(ramp_amp))
+        for sign in [-1, 1]:
+            for t0 in Ts:
+                for log10_strain in log10_burst_amplitudes:
+                    #set up the sky location of the pulsar
+                    #ramp_amp*=sign
+                    #print(psr.name + "would see an amplitude of: " + str(ramp_amp))
 
-                #Now we need to add the A_red and gamma_red params so that we have in total:
-                #A_red, Gamma_red, A_ramp, t_ramp
-                for log10_rn_amp in log10_rn_amps:
-                    for gamma in gammas:
-                        #now we have the four parameters, we need to ask the pta to calculate a likelihood
-                        #the pta params are in the order:
-                        #[psr_gamma, psr_log10_A, ramp_log10_A, ramp_t0]
-                        lnlike = pta.get_lnlikelihood([log10_rn_amp, gamma, log10_strain, t0])
-                        f.write('{:.3f}\t{:.3f}\t{:.3f}\t{:.3f}\t{:.3f}\n'.format(gamma, log10_rn_amp, log10_strain, t0, lnlike))
+                    #Now we need to add the A_red and gamma_red params so that we have in total:
+                    #A_red, Gamma_red, A_ramp, t_ramp
+                    for log10_rn_amp in log10_rn_amps:
+                        for gamma in gammas:
+                            #now we have the four parameters, we need to ask the pta to calculate a likelihood
+                            #the pta params are in the order:
+                            #[sign, psr_gamma, psr_log10_A, ramp_log10_A, ramp_t0]
+                            lnlike = pta.get_lnlikelihood([sign, gamma, log10_rn_amp, log10_strain, t0])
+                            f.write('{:.3f}\n'.format(lnlike))
 
 
 if __name__ == '__main__':
-    pkl_path = '/home/nima/nanograv/11yr/NANOGrav_11yr_DE436.pickle'
+    pkl_path = '/home/nima/nanograv/11yr_burst_factorizedlikelihood/NANOGrav_11yr_DE436.pickle'
+    outdir = '/home/nima/nanograv/11yr_burst_factorizedlikelihood/single_psr_lookup_v4/'
+    noisefile = '/home/nima/nanograv/11yr_burst_factorizedlikelihood/noisefiles/noisedict.json'
+
     with open(pkl_path, 'rb') as f:
-        psrs=pickle.load(f)
+        allpsrs=pickle.load(f)
+    make_lookup_table(allpsrs[0], noisefile, outdir)
+    #for p in psrs:
+    #    params.append([p])
 
-    params = []
-    for p in psrs:
-        params.append([p])
-
-    pool = mp.Pool(mp.cpu_count())
-    pool.starmap(make_lookup_table, params)
+    #pool = mp.Pool(mp.cpu_count())
+    #pool.starmap(make_lookup_table, params)

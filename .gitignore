@@ -1,3 +1,8 @@
 #ignore the pickle#
-*.pkl
-*.pickle
+*
+!single_psr_analysis.py
+!scratch.ipynb
+!lookup_plots.ipynb
+!bwm_snglpsr_ramp.py
+!bwm_snglpsr.py
+!single_psr_analysis
