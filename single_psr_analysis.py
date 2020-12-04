@@ -168,12 +168,12 @@ for loc in range(npix): #The sky-location of the burst
                     print(psr.name + " would see an amplitude of: " + str(burst_amplitude[0][0]))
 '''
 
-def make_lookup_table(psr, noisefile, outdir):
-    log10_burst_amplitudes = np.linspace(-17, -12, 50, endpoint=True) #grid points for the burst strain
-    burst_amp_spacing = '-17,-12,50'
+def make_lookup_table(psr, noisefile, outdir, sign):
+    log10_burst_amplitudes = np.linspace(-18, -12, 60, endpoint=True) #grid points for the burst strain
+    burst_amp_spacing = '-18,-12,60'
 
-    log10_rn_amps = np.linspace(-17, -12, 50, endpoint=True) #grid points for the pulsar red noise
-    rn_amp_spacing = '-17,-12,50'
+    log10_rn_amps = np.linspace(-18, -12, 60, endpoint=True) #grid points for the pulsar red noise
+    rn_amp_spacing = '-18,-12,60'
 
     Ngammas = 70
     gmin = 0
@@ -220,23 +220,22 @@ def make_lookup_table(psr, noisefile, outdir):
     with open(outdir+'{}/pars.txt'.format(psr.name), 'w+') as f:
         f.write('{}_red_noise_gamma;{}\n{}_red_noise_log10_A;{}\n{};{}\n{};{}\n{};{}'.format(psr.name,gamma_spacing,psr.name,rn_amp_spacing, 'ramp_log10_A',burst_amp_spacing, 'ramp_t0',time_spacing,'sign', sign_spacing))
 
-    with open(outdir + "{}/{}_lookup.txt".format(psr.name, psr.name),'a+') as f:
-        for sign in [-1, 1]:
-            for t0 in Ts:
-                for log10_strain in log10_burst_amplitudes:
-                    #set up the sky location of the pulsar
-                    #ramp_amp*=sign
-                    #print(psr.name + "would see an amplitude of: " + str(ramp_amp))
+    with open(outdir + "{}/{}_{}.txt".format(psr.name, psr.name, sign),'a+') as f:
+        for t0 in Ts:
+            for log10_strain in log10_burst_amplitudes:
+                #set up the sky location of the pulsar
+                #ramp_amp*=sign
+                #print(psr.name + "would see an amplitude of: " + str(ramp_amp))
 
-                    #Now we need to add the A_red and gamma_red params so that we have in total:
-                    #A_red, Gamma_red, A_ramp, t_ramp
-                    for log10_rn_amp in log10_rn_amps:
-                        for gamma in gammas:
-                            #now we have the four parameters, we need to ask the pta to calculate a likelihood
-                            #the pta params are in the order:
-                            #[sign, psr_gamma, psr_log10_A, ramp_log10_A, ramp_t0]
-                            lnlike = pta.get_lnlikelihood([sign, gamma, log10_rn_amp, log10_strain, t0])
-                            f.write('{:.3f}\n'.format(lnlike))
+                #Now we need to add the A_red and gamma_red params so that we have in total:
+                #A_red, Gamma_red, A_ramp, t_ramp
+                for log10_rn_amp in log10_rn_amps:
+                    for gamma in gammas:
+                        #now we have the four parameters, we need to ask the pta to calculate a likelihood
+                        #the pta params are in the order:
+                        #[sign, psr_gamma, psr_log10_A, ramp_log10_A, ramp_t0]
+                        lnlike = pta.get_lnlikelihood([gamma, log10_rn_amp, log10_strain, t0, sign])
+                        f.write('{0:.12f}\n'.format(float(lnlike)))
 
 
 if __name__ == '__main__':
@@ -246,7 +245,41 @@ if __name__ == '__main__':
 
     with open(pkl_path, 'rb') as f:
         allpsrs=pickle.load(f)
-    make_lookup_table(allpsrs[0], noisefile, outdir)
+    psr = allpsrs[0]
+
+    params1=[psr, noisefile, outdir, 1]
+    params2=[psr, noisefile, outdir, -1]
+
+    log10_burst_amplitudes = np.linspace(-18, -12, 60, endpoint=True) #grid points for the burst strain
+    burst_amp_spacing = '-18,-12,60'
+
+    log10_rn_amps = np.linspace(-18, -12, 60, endpoint=True) #grid points for the pulsar red noise
+    rn_amp_spacing = '-18,-12,60'
+
+
+    gammas = np.linspace(0, 7, 70, endpoint=True) #grid points for gamma'
+    gamma_spacing ='0,7,70'
+
+    tmin = psr.toas.min() / const.day
+    tmax = psr.toas.max() / const.day
+
+
+    U,_ = utils.create_quantization_matrix(psr.toas)
+    eps = 9  # clip first and last N observing epochs
+    t0min = np.floor(max(U[:,eps] * psr.toas/const.day))
+    t0max = np.ceil(max(U[:,-eps] * psr.toas/const.day))
+
+    Ts = np.linspace(t0min, t0max, num=100, endpoint=True)
+    time_spacing = '{},{},100'.format(t0min, t0max)
+
+    sign_spacing = '-1,1,2'
+
+
+    with open(outdir+'{}/pars.txt'.format(psr.name), 'w+') as f:
+        f.write('{}_red_noise_gamma;{}\n{}_red_noise_log10_A;{}\n{};{}\n{};{}\n{};{}'.format(psr.name,gamma_spacing,psr.name,rn_amp_spacing, 'ramp_log10_A',burst_amp_spacing, 'ramp_t0',time_spacing,'sign', sign_spacing))
+
+    pool = mp.Pool(2)
+    pool.starmap(make_lookup_table, [params1, params2])
     #for p in psrs:
     #    params.append([p])
 
