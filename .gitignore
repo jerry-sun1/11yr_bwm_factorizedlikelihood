@@ -1,5 +1,6 @@
 #ignore the pickle#
 *
+!full_pipeline.ipynb
 !single_psr_analysis.py
 !scratch.ipynb
 !lookup_plots.ipynb
